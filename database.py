@@ -1,196 +1,270 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, JSON, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime, timedelta
+import aiosqlite
+import asyncpg
 import json
+from datetime import datetime, timedelta
+from config import DATABASE_CONFIG, USE_SQLITE
 
-Base = declarative_base()
+class Database:
+    def _init_(self):
+        self.pool = None
+        self.sqlite_conn = None
+        
+    async def create_tables(self):
+        """Создание таблиц в базе данных"""
+        if USE_SQLITE:
+            await self._create_sqlite_tables()
+        else:
+            await self._create_postgres_tables()
+    
+    async def _create_sqlite_tables(self):
+        """Создание таблиц в SQLite"""
+        self.sqlite_conn = await aiosqlite.connect('bot.db')
+        
+        # Таблица пользователей
+        await self.sqlite_conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                username TEXT,
+                full_name TEXT,
+                role TEXT,
+                language TEXT DEFAULT 'ru',
+                currency TEXT DEFAULT 'UZS',
+                phone_number TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Таблица подписок
+        await self.sqlite_conn.execute('''
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                end_date TIMESTAMP,
+                is_free BOOLEAN DEFAULT FALSE,
+                is_active BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Таблица объявлений
+        await self.sqlite_conn.execute('''
+            CREATE TABLE IF NOT EXISTS properties (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                type TEXT,
+                district TEXT,
+                address TEXT,
+                price DECIMAL,
+                currency TEXT DEFAULT 'UZS',
+                rooms INTEGER,
+                area DECIMAL,
+                description TEXT,
+                photos TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Таблица избранного
+        await self.sqlite_conn.execute('''
+            CREATE TABLE IF NOT EXISTS favorites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                property_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (property_id) REFERENCES properties (id),
+                UNIQUE(user_id, property_id)
+            )
+        ''')
+        
+        await self.sqlite_conn.commit()
+    
+    async def get_user(self, user_id: int):
+        """Получение пользователя по ID"""
+        if USE_SQLITE:
+            cursor = await self.sqlite_conn.execute(
+                'SELECT * FROM users WHERE id = ?', (user_id,)
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            
+            if row:
+                return {
+                    'id': row[0],
+                    'username': row[1],
+                    'full_name': row[2],
+                    'role': row[3],
+                    'language': row[4],
+                    'currency': row[5],
+                    'phone_number': row[6],
+                    'created_at': row[7]
+                }
+            return None
+    
+    async def create_user(self, user_id: int, username: str, full_name: str, language: str = 'ru'):
+        """Создание нового пользователя"""
+        if USE_SQLITE:
+            await self.sqlite_conn.execute('''
+                INSERT OR IGNORE INTO users (id, username, full_name, language)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, username, full_name, language))
+            await self.sqlite_conn.commit()
+    
+    async def update_user_role(self, user_id: int, role: str):
+        """Обновление роли пользователя"""
+        if USE_SQLITE:
+            await self.sqlite_conn.execute(
+                'UPDATE users SET role = ? WHERE id = ?',
+                (role, user_id)
+            )
+            await self.sqlite_conn.commit()
+    
+    async def update_user_language(self, user_id: int, language: str):
+        """Обновление языка пользователя"""
+        if USE_SQLITE:
+            await self.sqlite_conn.execute(
+                'UPDATE users SET language = ? WHERE id = ?',
+                (language, user_id)
+            )
+            await self.sqlite_conn.commit()
+    
+    async def update_user_currency(self, user_id: int, currency: str):
+        """Обновление валюты пользователя"""
+        if USE_SQLITE:
+            await self.sqlite_conn.execute(
+                'UPDATE users SET currency = ? WHERE id = ?',
+                (currency, user_id)
+            )
+            await self.sqlite_conn.commit()
+    
+    async def create_subscription(self, user_id: int, days: int, is_free: bool = True):
+        """Создание подписки"""
+        if USE_SQLITE:
+            end_date = datetime.now() + timedelta(days=days)
+            await self.sqlite_conn.execute('''
+                INSERT INTO subscriptions (user_id, end_date, is_free)
+                VALUES (?, ?, ?)
+            ''', (user_id, end_date, is_free))
+            await self.sqlite_conn.commit()
+    
+    async def get_user_subscription(self, user_id: int):
+        """Получение активной подписки пользователя"""
+        if USE_SQLITE:
+            cursor = await self.sqlite_conn.execute('''
+                SELECT * FROM subscriptions 
+                WHERE user_id = ? AND is_active = TRUE AND end_date > ?
+                ORDER BY end_date DESC LIMIT 1
+            ''', (user_id, datetime.now()))
+            
+            row = await cursor.fetchone()
+            await cursor.close()
+            
+            if row:
+                return {
+                    'id': row[0],
+                    'user_id': row[1],
+                    'start_date': row[2],
+                    'end_date': row[3],
+                    'is_free': bool(row[4]),
+                    'is_active': bool(row[5])
+                }
+            return None
+    
+    async def add_to_favorites(self, user_id: int, property_id: int) -> bool:
+        """Добавление в избранное"""
+        try:
+            if USE_SQLITE:
+                await self.sqlite_conn.execute('''
+                    INSERT OR IGNORE INTO favorites (user_id, property_id)
+                    VALUES (?, ?)
+                ''', (user_id, property_id))
+                await self.sqlite_conn.commit()
+                return True
+        except Exception:
+            return False
+    
+    async def get_user_favorites(self, user_id: int):
+        """Получение избранного пользователя"""
+        if USE_SQLITE:
+            cursor = await self.sqlite_conn.execute('''
+                SELECT f., p. FROM favorites f
+                JOIN properties p ON f.property_id = p.id
+                WHERE f.user_id = ? AND p.is_active = TRUE
+                ORDER BY f.created_at DESC
+            ''', (user_id,))
+            
+            rows = await cursor.fetchall()
+            await cursor.close()
+            
+            favorites = []
+            for row in rows:
+                favorites.append({
+                    'id': row[0],
+                    'user_id': row[1],
+                    'property_id': row[2],
+                    'created_at': row[3]
+                })
+            return favorites
+    
+    async def is_property_in_favorites(self, user_id: int, property_id: int) -> bool:
+        """Проверка, есть ли объявление в избранном"""
+        if USE_SQLITE:
+            cursor = await self.sqlite_conn.execute('''
+                SELECT 1 FROM favorites 
+                WHERE user_id = ? AND property_id = ?
+            ''', (user_id, property_id))
+            
+            row = await cursor.fetchone()
+            await cursor.close()
+            return row is not None
+    
+    async def create_contact_request(self, user_id: int, target_user_id: int, property_id: int = None) -> int:
+        """Создание запроса на контакт"""
+        try:
+            if USE_SQLITE:
+                cursor = await self.sqlite_conn.execute('''
+                    INSERT INTO contact_requests (user_id, target_user_id, property_id, status)
+                    VALUES (?, ?, ?, 'pending')
+                ''', (user_id, target_user_id, property_id))
+                await self.sqlite_conn.commit()
+                return cursor.lastrowid
+        except Exception:
+            return None
+    
+    async def get_user_rating_stats(self, user_id: int):
+        """Получение статистики рейтинга пользователя"""
+        # Заглушка - в реальной реализации здесь будет запрос к таблице рейтингов
+        return {'average': 4.5, 'count': 10}
+    
+    async def get_property(self, property_id: int):
+        """Получение объявления по ID"""
+        if USE_SQLITE:
+            cursor = await self.sqlite_conn.execute(
+                'SELECT * FROM properties WHERE id = ?', (property_id,)
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            
+            if row:
+                return {
+                    'id': row[0],
+                    'user_id': row[1],
+                    'type': row[2],
+                    'district': row[3],
+                    'address': row[4],
+                    'price': float(row[5]),
+                    'currency': row[6],
+                    'rooms': row[7],
+                    'area': float(row[8]),
+                    'description': row[9],
+                    'photos': json.loads(row[10]) if row[10] else [],
+                    'is_active': bool(row[11]),
+                    'created_at': row[12]
+                }
+            return None
 
-class User(Base):
-    _tablename_ = 'users'
-    
-    id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True)
-    username = Column(String(100))
-    full_name = Column(String(200))
-    phone = Column(String(20))
-    role = Column(String(50))
-    currency = Column(String(3), default='UZS')
-    language = Column(String(2), default='ru')
-    
-    # Поля для бесплатного периода
-    free_period_start = Column(DateTime)
-    free_period_end = Column(DateTime)
-    free_period_used = Column(Boolean, default=False)
-    
-    # Поле для блокировки смены роли
-    role_locked = Column(Boolean, default=False)
-    
-    # Рейтинги
-    rating = Column(Float, default=0.0)
-    rating_count = Column(Integer, default=0)
-    
-    # Статистика
-    properties_count = Column(Integer, default=0)
-    last_active = Column(DateTime, default=datetime.now)
-    created_at = Column(DateTime, default=datetime.now)
-
-class Property(Base):
-    _tablename_ = 'properties'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    user_phone = Column(String(20))
-    property_type = Column(String(50))
-    district = Column(String(100))
-    address = Column(String(300))
-    price_uzs = Column(Float)
-    price_usd = Column(Float)
-    currency = Column(String(3), default='UZS')
-    rooms = Column(Integer)
-    area = Column(Float)
-    description = Column(Text)
-    photos = Column(Text)
-    status = Column(String(20), default='active')
-    created_at = Column(DateTime, default=datetime.now)
-    published_in_channel = Column(Boolean, default=False)
-    
-    # Дополнительные поля
-    floor = Column(Integer)
-    total_floors = Column(Integer)
-    year_built = Column(Integer)
-    has_photos = Column(Boolean, default=False)
-    
-    # Для аренды
-    is_daily_rent = Column(Boolean, default=False)
-    available_from = Column(DateTime)
-    available_to = Column(DateTime)
-
-class Favorite(Base):
-    _tablename_ = 'favorites'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    property_id = Column(Integer)
-    created_at = Column(DateTime, default=datetime.now)
-
-class Subscription(Base):
-    _tablename_ = 'subscriptions'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    role = Column(String(50))
-    start_date = Column(DateTime, default=datetime.now)
-    end_date = Column(DateTime)
-    is_active = Column(Boolean, default=True)
-    is_free_period = Column(Boolean, default=True)
-    payment_confirmed = Column(Boolean, default=False)
-    admin_id = Column(Integer)  # Админ, подтвердивший оплату
-
-class Rating(Base):
-    _tablename_ = 'ratings'
-    
-    id = Column(Integer, primary_key=True)
-    target_user_id = Column(Integer)
-    author_user_id = Column(Integer)
-    rating = Column(Integer)
-    comment = Column(Text)
-    created_at = Column(DateTime, default=datetime.now)
-
-class ContactRequest(Base):
-    _tablename_ = 'contact_requests'
-    
-    id = Column(Integer, primary_key=True)
-    requester_id = Column(Integer)
-    target_user_id = Column(Integer)
-    property_id = Column(Integer)
-    status = Column(String(20), default='pending')
-    admin_id = Column(Integer)
-    created_at = Column(DateTime, default=datetime.now)
-    processed_at = Column(DateTime)
-
-class SavedSearch(Base):
-    _tablename_ = 'saved_searches'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    search_name = Column(String(100))
-    filters = Column(JSON)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-    last_notified = Column(DateTime)
-
-class Chat(Base):
-    _tablename_ = 'chats'
-    
-    id = Column(Integer, primary_key=True)
-    user1_id = Column(Integer)
-    user2_id = Column(Integer)
-    property_id = Column(Integer)
-    created_at = Column(DateTime, default=datetime.now)
-    is_active = Column(Boolean, default=True)
-    last_message_at = Column(DateTime, default=datetime.now)
-
-class ChatMessage(Base):
-    _tablename_ = 'chat_messages'
-    
-    id = Column(Integer, primary_key=True)
-    chat_id = Column(Integer)
-    sender_id = Column(Integer)
-    message = Column(Text)
-    sent_at = Column(DateTime, default=datetime.now)
-    is_read = Column(Boolean, default=False)
-
-class Booking(Base):
-    _tablename_ = 'bookings'
-    
-    id = Column(Integer, primary_key=True)
-    property_id = Column(Integer)
-    user_id = Column(Integer)
-    check_in = Column(DateTime)
-    check_out = Column(DateTime)
-    guests = Column(Integer, default=1)
-    total_price = Column(Float)
-    status = Column(String(20), default='pending')
-    created_at = Column(DateTime, default=datetime.now)
-    confirmed_at = Column(DateTime)
-    admin_id = Column(Integer)
-
-class Badge(Base):
-    _tablename_ = 'badges'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    badge_type = Column(String(50))
-    badge_name = Column(String(100))
-    description = Column(Text)
-    awarded_at = Column(DateTime, default=datetime.now)
-    is_active = Column(Boolean, default=True)
-
-class UserActivity(Base):
-    _tablename_ = 'user_activities'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
-    activity_type = Column(String(50))  # search, view, contact, etc.
-    property_id = Column(Integer)
-    details = Column(JSON)
-    created_at = Column(DateTime, default=datetime.now)
-
-class AdminLog(Base):
-    _tablename_ = 'admin_logs'
-    
-    id = Column(Integer, primary_key=True)
-    admin_id = Column(Integer)
-    action = Column(String(100))
-    target_user_id = Column(Integer)
-    details = Column(JSON)
-    created_at = Column(DateTime, default=datetime.now)
-
-# Инициализация БД
-engine = create_engine('sqlite:///chirchik_estate.db')
-Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
-
-def get_session():
-    return Session()
+# Создаем глобальный экземпляр базы данных
+database_instance = Database()
