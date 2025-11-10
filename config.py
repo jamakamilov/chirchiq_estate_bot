@@ -2,11 +2,11 @@ import os
 from typing import List
 
 # Токен бота из переменных окружения
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', 'YOUR_BOT_TOKEN_HERE')
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', '7662653538:AAEUlSnB7cOdJ5GybKEWoHL88h3feko_xJQ')
 
 # ID администраторов
 ADMIN_IDS = [
-    int(x.strip()) for x in os.getenv('ADMIN_IDS', '123456789').split(',') 
+    int(x.strip()) for x in os.getenv('ADMIN_IDS', '2132610146').split(',') 
     if x.strip().isdigit()
 ]
 
@@ -25,7 +25,7 @@ USE_SQLITE = os.getenv('USE_SQLITE', 'True').lower() == 'true'
 # Проверка обязательных переменных
 def validate_config():
     """Валидация конфигурации"""
-    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == 'YOUR_BOT_TOKEN_HERE':
+    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == '7662653538:AAEUlSnB7cOdJ5GybKEWoHL88h3feko_xJQ':
         raise ValueError("Please set TELEGRAM_TOKEN environment variable")
 
 # Выполняем валидацию при импорте
