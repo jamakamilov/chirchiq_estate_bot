@@ -29,7 +29,7 @@ def get_role_keyboard(language: str) -> ReplyKeyboardMarkup:
     builder.adjust(2)
     return builder.as_markup(resize_keyboard=True)
 
-def get_main_menu_keyboard(language: str, role: str) -> ReplyKeyboardMarkup:
+def get_main_menu_keyboard(language: str, role: str, user_id: int, admin_ids: list) -> ReplyKeyboardMarkup:
     """Главное меню в зависимости от роли"""
     builder = ReplyKeyboardBuilder()
     
@@ -39,12 +39,17 @@ def get_main_menu_keyboard(language: str, role: str) -> ReplyKeyboardMarkup:
         TEXTS[language]["my_profile"],
         TEXTS[language]["favorites"],
         TEXTS[language]["change_currency"],
-        TEXTS[language]["ai_features"]
+        TEXTS[language]["ai_features"],
+        TEXTS[language]["change_language"]
     ]
     
     # Добавляем кнопку добавления объявления для продавцов, риэлторов и т.д.
     if role in ['seller', 'realtor', 'agency', 'developer']:
         base_buttons.insert(1, TEXTS[language]["add_listing"])
+    
+    # Добавляем админ-панель для администраторов
+    if user_id in admin_ids:
+        base_buttons.append("👨‍💼 Админ панель")
     
     for button in base_buttons:
         builder.add(KeyboardButton(text=button))
@@ -74,6 +79,12 @@ def get_yes_no_keyboard(language: str) -> ReplyKeyboardMarkup:
     builder.add(KeyboardButton(text="✅ Да"))
     builder.add(KeyboardButton(text="❌ Нет"))
     builder.add(KeyboardButton(text=TEXTS[language]["back_to_main"]))
+    return builder.as_markup(resize_keyboard=True)
+
+def get_cancel_keyboard(language: str) -> ReplyKeyboardMarkup:
+    """Клавиатура с кнопкой отмены"""
+    builder = ReplyKeyboardBuilder()
+    builder.add(KeyboardButton(text="❌ Отмена"))
     return builder.as_markup(resize_keyboard=True)
 
 # ========== INLINE KEYBOARDS ==========
@@ -134,7 +145,7 @@ def get_property_type_keyboard(language: str, include_any: bool = False) -> Inli
     
     if include_any:
         builder.add(InlineKeyboardButton(
-            text="📍 Любой тип",
+            text=TEXTS[language]["any_district"],
             callback_data="property_type_any"
         ))
     
@@ -151,22 +162,23 @@ def get_district_keyboard(language: str, include_any: bool = False) -> InlineKey
     builder = InlineKeyboardBuilder()
     
     districts = [
-        "Центр",
-        "Старгород",
-        "Гидропарк",
-        "Северный",
-        "Южный", 
-        "Восточный",
-        "Западный",
-        "Промзона",
-        "Кирзавод",
-        "Текстильщик"
+        "🏙 Центр",
+        "🏘 Старгород", 
+        "🌳 Гидропарк",
+        "🧭 Северный",
+        "🧭 Южный",
+        "🧭 Восточный",
+        "🧭 Западный",
+        "🏭 Промзона",
+        "🏭 Кирзавод",
+        "🏭 Текстильщик"
     ]
     
     for district in districts:
+        district_name = district.split(" ")[1]  # Берем только название без эмодзи
         builder.add(InlineKeyboardButton(
             text=district,
-            callback_data=f"district_{district}"
+            callback_data=f"district_{district_name}"
         ))
     
     if include_any:
@@ -213,15 +225,15 @@ def get_admin_keyboard(language: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     admin_features = [
-        (TEXTS[language]["stats"], "admin_stats"),
-        (TEXTS[language]["users"], "admin_users"),
-        (TEXTS[language]["properties"], "admin_properties"),
-        (TEXTS[language]["broadcast"], "admin_broadcast"),
-        (TEXTS[language]["change_user_role"], "admin_change_role"),
-        (TEXTS[language]["contact_requests"], "admin_contact_requests"),
-        (TEXTS[language]["advanced_stats"], "admin_advanced_stats"),
-        (TEXTS[language]["booking_requests"], "admin_booking_requests"),
-        (TEXTS[language]["subscription_requests"], "admin_subscription_requests")
+        ("📊 Статистика", "admin_stats"),
+        ("👥 Пользователи", "admin_users"),
+        ("🏠 Объявления", "admin_properties"),
+        ("📢 Рассылка", "admin_broadcast"),
+        ("👤 Сменить роль", "admin_change_role"),
+        ("📞 Запросы контактов", "admin_contact_requests"),
+        ("📈 Расширенная статистика", "admin_advanced_stats"),
+        ("📅 Бронирования", "admin_booking_requests"),
+        ("💳 Подписки", "admin_subscription_requests")
     ]
     
     for text, feature in admin_features:
@@ -257,7 +269,7 @@ def get_subscription_keyboard(language: str, user_id: int) -> InlineKeyboardMark
     
     subscription_plans = [
         ("1 месяц - 50,000 UZS", "subscription_1"),
-        ("3 месяца - 120,000 UZS", "subscription_3"),
+        ("3 месяца - 120,000 UZS", "subscription_3"), 
         ("6 месяцев - 200,000 UZS", "subscription_6"),
         ("12 месяцев - 350,000 UZS", "subscription_12")
     ]
@@ -299,11 +311,11 @@ def get_quick_filters_keyboard(language: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     filters = [
-        (TEXTS[language]["filter_by_price"], "filter_price"),
-        (TEXTS[language]["filter_by_rooms"], "filter_rooms"),
-        (TEXTS[language]["filter_by_area"], "filter_area"),
-        (TEXTS[language]["filter_recent"], "filter_recent"),
-        (TEXTS[language]["save_search"], "save_search")
+        ("💰 По цене", "filter_price"),
+        ("🚪 По комнатам", "filter_rooms"),
+        ("📐 По площади", "filter_area"),
+        ("🕐 Недавние", "filter_recent"),
+        ("💾 Сохранить поиск", "save_search")
     ]
     
     for text, filter_type in filters:
@@ -351,7 +363,7 @@ def get_chat_keyboard(language: str, user_id: int) -> InlineKeyboardMarkup:
     
     return builder.as_markup()
 
-def get_pagination_keyboard(page: int, total_pages: int, prefix: str) -> InlineKeyboardMarkup:
+def get_pagination_keyboard(page: int, total_pages: int, prefix: str, language: str) -> InlineKeyboardMarkup:
     """Клавиатура пагинации"""
     builder = InlineKeyboardBuilder()
     
@@ -371,6 +383,11 @@ def get_pagination_keyboard(page: int, total_pages: int, prefix: str) -> InlineK
             text="Вперед ➡",
             callback_data=f"{prefix}page{page+1}"
         ))
+    
+    builder.add(InlineKeyboardButton(
+        text=TEXTS[language]["back_to_main"],
+        callback_data="back_to_main"
+    ))
     
     builder.adjust(3)
     return builder.as_markup()
@@ -411,8 +428,124 @@ def get_user_management_keyboard(language: str, user_id: int) -> InlineKeyboardM
             callback_data=f"admin_message_{user_id}"
         ),
         InlineKeyboardButton(
-            text="🔧 Управление подпиской",
+            text="🔧 Подписка",
             callback_data=f"admin_subscription_{user_id}"
+        )
+    )
+    
+    builder.adjust(2)
+    return builder.as_markup()
+
+def get_search_filters_keyboard(language: str) -> InlineKeyboardMarkup:
+    """Клавиатура фильтров поиска"""
+    builder = InlineKeyboardBuilder()
+    
+    filters = [
+        ("💰 Диапазон цен", "filter_price_range"),
+        ("🚪 Количество комнат", "filter_rooms_count"),
+        ("📐 Площадь", "filter_area_range"),
+        ("📍 Район", "filter_district"),
+        ("🏠 Тип недвижимости", "filter_property_type"),
+        ("🆕 Новые сначала", "filter_new_first"),
+        ("💰 Дешевые сначала", "filter_cheap_first")
+    ]
+    
+    for text, filter_type in filters:
+        builder.add(InlineKeyboardButton(
+            text=text,
+            callback_data=filter_type
+        ))
+    
+    builder.add(InlineKeyboardButton(
+        text="✅ Применить фильтры",
+        callback_data="apply_filters"
+    ))
+    
+    builder.add(InlineKeyboardButton(
+        text=TEXTS[language]["back_to_main"],
+        callback_data="back_to_main"
+    ))
+    
+    builder.adjust(2)
+    return builder.as_markup()
+
+def get_property_actions_keyboard(language: str, property_id: int, is_favorite: bool) -> InlineKeyboardMarkup:
+    """Клавиатура действий с объявлением"""
+    builder = InlineKeyboardBuilder()
+    
+    # Кнопка избранного
+    favorite_text = "❤ В избранном" if is_favorite else "🤍 В избранное"
+    favorite_callback = f"remove_favorite_{property_id}" if is_favorite else f"add_favorite_{property_id}"
+    
+    builder.add(InlineKeyboardButton(
+        text=favorite_text,
+        callback_data=favorite_callback
+    ))
+    
+    # Кнопка контакта
+    builder.add(InlineKeyboardButton(
+        text="📞 Запросить контакт",
+        callback_data=f"request_contact_{property_id}"
+    ))
+    
+    # Кнопка бронирования
+    builder.add(InlineKeyboardButton(
+        text="📅 Забронировать",
+        callback_data=f"book_property_{property_id}"
+    ))
+    
+    # Кнопка чата
+    builder.add(InlineKeyboardButton(
+        text="💬 Написать сообщение",
+        callback_data=f"message_owner_{property_id}"
+    ))
+    
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_profile_management_keyboard(language: str) -> InlineKeyboardMarkup:
+    """Клавиатура управления профилем"""
+    builder = InlineKeyboardBuilder()
+    
+    actions = [
+        ("✏ Изменить имя", "edit_name"),
+        ("📞 Изменить телефон", "edit_phone"),
+        ("👤 Изменить роль", "edit_role"),
+        ("🌐 Изменить язык", "edit_language"),
+        ("💰 Изменить валюту", "edit_currency"),
+        ("📊 Моя статистика", "my_stats")
+    ]
+    
+    for text, action in actions:
+        builder.add(InlineKeyboardButton(
+            text=text,
+            callback_data=action
+        ))
+    
+    builder.add(InlineKeyboardButton(
+        text=TEXTS[language]["back_to_main"],
+        callback_data="back_to_main"
+    ))
+    
+    builder.adjust(2)
+    return builder.as_markup()
+
+def get_moderation_keyboard(property_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура модерации объявлений"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.add(
+        InlineKeyboardButton(
+            text="✅ Одобрить",
+            callback_data=f"approve_property_{property_id}"
+        ),
+        InlineKeyboardButton(
+            text="❌ Отклонить",
+            callback_data=f"reject_property_{property_id}"
+        ),
+        InlineKeyboardButton(
+            text="🚨 Жалоба",
+            callback_data=f"report_property_{property_id}"
         )
     )
     
