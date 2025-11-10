@@ -1,8 +1,9 @@
 import os
 from typing import List
 
-# Токен бота из переменных окружения
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', '7662653538:AAEUlSnB7cOdJ5GybKEWoHL88h3feko_xJQ')
+# Токен бота должен быть задан в переменной окружения TELEGRAM_TOKEN
+# Для безопасности НЕ указываем реальный токен по умолчанию в коде.
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', '')
 
 # ID администраторов
 ADMIN_IDS = [
@@ -13,7 +14,7 @@ ADMIN_IDS = [
 # Настройки базы данных
 DATABASE_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
-    'port': int(os.getenv('DB_PORT', 5432)),
+    'port': int(os.getenv('DB_PORT', '5432')),
     'database': os.getenv('DB_NAME', 'chirchiq_estate'),
     'user': os.getenv('DB_USER', 'postgres'),
     'password': os.getenv('DB_PASSWORD', 'password')
@@ -21,12 +22,3 @@ DATABASE_CONFIG = {
 
 # Для простоты используем SQLite если нет PostgreSQL
 USE_SQLITE = os.getenv('USE_SQLITE', 'True').lower() == 'true'
-
-# Проверка обязательных переменных
-def validate_config():
-    """Валидация конфигурации"""
-    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == '7662653538:AAEUlSnB7cOdJ5GybKEWoHL88h3feko_xJQ':
-        raise ValueError("Please set TELEGRAM_TOKEN environment variable")
-
-# Выполняем валидацию при импорте
-validate_config()
