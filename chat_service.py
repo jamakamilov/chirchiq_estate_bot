@@ -121,4 +121,4 @@ class ChatService:
             
             return chats
         finally:
-            session.close()
+            session.close()
