@@ -8,6 +8,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
 from config import TELEGRAM_TOKEN, ADMIN_IDS
 from database import Database
@@ -21,28 +23,19 @@ from keyboards import (
 )
 from utils import format_price, send_notification, check_subscription
 
-# Настройка логирования (исправлено: использовали неверную переменную)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализация бота и диспетчера (parse_mode через Bot; добавлен MemoryStorage)
 if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_TOKEN is not set. Set TELEGRAM_TOKEN environment variable.")
-bot = Bot(token=TELEGRAM_TOKEN, parse_mode='HTML')
+bot = Bot(token=TELEGRAM_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
 # Инициализация базы данных
 db = Database()
 
-# Список возможных текстов кнопки старта (поддержка локалей)
-START_BUTTONS = {
-    TEXTS["ru"]["start_button"],
-    TEXTS["uz"]["start_button"],
-    TEXTS["en"]["start_button"]
-}
-
 # ========== START HANDLER ==========
-@dp.message(F.text.in_(START_BUTTONS))
+@dp.message(F.text == "/start")
 async def cmd_start(message: types.Message, state: FSMContext):
     """Обработчик начала работы"""
     user_id = message.from_user.id
@@ -68,30 +61,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await state.set_state(UserStates.choosing_role)
         await show_role_selection(message, language)
 
-@dp.message(F.text == TEXTS["ru"]["language_button"] or F.text == TEXTS["uz"]["language_button"] or F.text == TEXTS["en"]["language_button"])
-async def change_language(message: types.Message):
-    """Смена языка"""
-    await show_language_selection(message)
-
-@dp.message(F.text == TEXTS["ru"]["admin_button"] or F.text == TEXTS["uz"]["admin_button"] or F.text == TEXTS["en"]["admin_button"])
-async def admin_panel(message: types.Message, state: FSMContext):
-    """Админ панель"""
-    user_id = message.from_user.id
-    if user_id not in ADMIN_IDS:
-        # Используем локализованный текст ошибки, если можем определить язык
-        user = await db.get_user(user_id)
-        language = user.get('language', 'ru') if user else 'ru'
-        await message.answer(TEXTS[language]["access_denied"])
-        return
-        
-    user = await db.get_user(user_id)
-    language = user.get('language', 'ru')
-    
-    await state.set_state(AdminStates.admin_menu)
-    await message.answer(
-        TEXTS[language]["admin_welcome"],
-        reply_markup=get_admin_keyboard(language)
-    )
 
 # ========== ROLE SELECTION ==========
 async def show_role_selection(message: types.Message, language: str):
@@ -99,6 +68,27 @@ async def show_role_selection(message: types.Message, language: str):
     keyboard = get_role_keyboard(language)
     await message.answer(
         TEXTS[language]["welcome"] + "\n\n" + TEXTS[language]["choose_role"],
+        reply_markup=keyboard
+    )
+
+async def show_main_menu(message: types.Message, state: FSMContext, language: str):
+    """Показ главного меню"""
+    user = await db.get_user(message.from_user.id)
+    if user and user.get('role'):
+        role = user.get('role')
+        keyboard = get_main_menu_keyboard(language, role)
+        await message.answer(
+            TEXTS[language]["main_menu"],
+            reply_markup=keyboard
+        )
+    else:
+        await show_role_selection(message, language)
+
+async def show_language_selection(message: types.Message):
+    """Показ меню выбора языка"""
+    keyboard = get_language_keyboard()
+    await message.answer(
+        "🌐 Выберите язык / Tilni tanlang / Choose language:",
         reply_markup=keyboard
     )
 
