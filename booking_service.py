@@ -108,4 +108,4 @@ class BookingService:
             
             return bookings
         finally:
-            session.close()
+            session.close()
