@@ -105,4 +105,4 @@ class AnalyticsService:
             return dict(activities)
             
         finally:
-            session.close()
+            session.close()
